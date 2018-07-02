@@ -350,6 +350,7 @@ class Calibrator:
 		'''
 			Actions performed in standby state
 		'''
+		self.enableController(self.enable.value)
 		for i in reversed(range(self.desired_standbytime)):
 				self.status.remaining_time = i
 				self.state_publisher.publish(self.status)
