@@ -43,6 +43,7 @@ from geometry_msgs.msg import Vector3Stamped
 from std_srvs.srv import Trigger
 from imu_calibrator.msg import CalibratorStatus
 from robotnik_msgs.srv import enable_disable
+from mavros_msgs.msg import State as MavrosState
 
 DEFAULT_FREQ = 100.0
 DEFAULT_BIAS = 0.01
@@ -51,7 +52,7 @@ DEFAULT_STOPPEDTIME = 10
 # Time than the gyroscope is checking his bias
 DEFAULT_GYROTIME = 0.5
 # Time between calibrations
-DEFAULT_STANDBYTIME = 20#300
+DEFAULT_STANDBYTIME = 300
 MAX_FREQ = 500.0
 
 # Estados añadidos
@@ -73,6 +74,7 @@ class Calibrator:
 		self.enable.value = True
 		self.disable = enable_disable()
 		self.disable.value = False
+		self.calibracionTerminada = True
 		# Checks value of freq
 		if self.desired_freq <= 0.0 or self.desired_freq > MAX_FREQ:
 			rospy.loginfo('%s::init: Desired freq (%f) is not possible. Setting desired_freq to %f'%(self.node_name,self.desired_freq, DEFAULT_FREQ))
@@ -162,6 +164,11 @@ class Calibrator:
 		if abs(self.incMin[0]-self.incMax[0])>=self.desired_bias or abs(self.incMin[1]-self.incMax[1])>=self.desired_bias or abs(self.incMin[2]-self.incMax[2])>=self.desired_bias:
 			self.calibrate = True
 
+	def calibrado(self,data):
+		if data.system_status == 0:
+			self.calibracionTerminada = False
+		else:
+			self.calibracionTerminada = True
 
 	def rosSetup(self):
 		'''
@@ -175,6 +182,7 @@ class Calibrator:
 		# Subscribers
 		self.odom = rospy.Subscriber('robotnik_base_control/odom', Odometry, self.movimiento)
 		self.gyro = rospy.Subscriber('imu/rpy/filtered', Vector3Stamped, self.giroscopio)
+		self.calibrated = rospy.Subscriber('mavros/state', MavrosState, self.calibrado)
 		# Service Servers
 		rospy.wait_for_service('calibrate_imu_gyro')
 		rospy.wait_for_service('robotnik_base_control/enable')
@@ -410,13 +418,16 @@ class Calibrator:
 			self.switchToState(State.INIT_STATE)
 
 		if self.calibrate:
+			self.calibracionTerminada = False
 			self.status.state = "calibrating"
-			print("Calibrating, this will take a minute. Please, don't move the robot during this process.")
+			rospy.loginfo("Calibrating, this can take a while. Please, don't move the robot during this process.")
 			self.calibrateService()
-			for i in reversed(range(50)):
+			for i in reversed(range(60)):
 				self.status.remaining_time = i
 				self.state_publisher.publish(self.status)
 				rospy.sleep(1)
+				if self.calibracionTerminada:
+					break
 			self.switchToState(State.INIT_STATE)
 		else:
 			if tdiff >= self.desired_gyrotime:
