@@ -1,5 +1,6 @@
 # state
 string IDLE=idle
+string STANDBY=standby
 string CALIBRATING=calibrating
 string CHECKING=checking
 # IDLE, CALIBRATING, CHECKING

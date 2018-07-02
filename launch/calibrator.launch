@@ -1,6 +1,4 @@
 <launch>
-    <!-- Start service that allows to recalibrate the gyroscope -->
-    <include file="$(find robot_localization_utils)/launch/rl_utils.launch"/>
     <!-- Start recalibrator -->
     <node pkg="imu_calibrator" type="calibrator.py" name="calibrator" output="screen"/>
 </launch>

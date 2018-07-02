@@ -46,8 +46,12 @@ from robotnik_msgs.srv import enable_disable
 
 DEFAULT_FREQ = 100.0
 DEFAULT_BIAS = 0.01
+# Time than the robot has to be stopped to starting the calibration process
 DEFAULT_STOPPEDTIME = 10
+# Time than the gyroscope is checking his bias
 DEFAULT_GYROTIME = 0.5
+# Time between calibrations
+DEFAULT_STANDBYTIME = 20#300
 MAX_FREQ = 500.0
 
 # Estados añadidos
@@ -59,14 +63,12 @@ class Calibrator:
 	
 	def __init__(self, args):
 		
-		self.status = CalibratorStatus()
-		self.status.state = "idle"
-		self.status.remaining_time = DEFAULT_STOPPEDTIME
 		self.node_name = rospy.get_name() #.replace('/','')
 		self.desired_freq = args['desired_freq']
 		self.desired_bias = args['desired_bias']
 		self.desired_stoppedtime = args['desired_stoppedtime']
 		self.desired_gyrotime = args['desired_gyrotime']
+		self.desired_standbytime = args['desired_standbytime']
 		self.enable = enable_disable()
 		self.enable.value = True
 		self.disable = enable_disable()
@@ -84,8 +86,14 @@ class Calibrator:
 		if self.desired_gyrotime <= 0.0:
 			rospy.loginfo('%s::init: Desired gyro time (%f) is not possible. Setting desired_gyrotime to %f'%(self.node_name,self.desired_gyrotime, DEFAULT_GYROTIME))
 			self.desired_gyrotime = DEFAULT_GYROTIME
+		if self.desired_standbytime <= 0.0:
+			rospy.loginfo('%s::init: Desired standby time (%f) is not possible. Setting desired_standbytime to %f'%(self.node_name,self.desired_standbytime, DEFAULT_STANDBYTIME))
+			self.desired_standbytime = DEFAULT_STANDBYTIME
 	
-	
+		self.status = CalibratorStatus()
+		self.status.state = "idle"
+		self.status.remaining_time = self.desired_stoppedtime
+
 		self.real_freq = 0.0
 		
 		# Saves the state of the component
@@ -342,7 +350,14 @@ class Calibrator:
 		'''
 			Actions performed in standby state
 		'''
-		rospy.sleep(2)
+		for i in reversed(range(self.desired_standbytime)):
+				self.status.remaining_time = i
+				self.state_publisher.publish(self.status)
+				rospy.sleep(1)
+
+		self.status.state = "idle"
+		self.state_publisher.publish(self.status)
+		self.status.remaining_time = self.desired_stoppedtime
 		self.switchToState(State.INIT_STATE)
 		
 		return
@@ -370,7 +385,7 @@ class Calibrator:
 			if tdiff >= self.desired_stoppedtime:
 				self.checkedMovement = True
 				self.status.state = "checking"
-				self.status.remaining_time = DEFAULT_GYROTIME
+				self.status.remaining_time = self.desired_gyrotime
 				self.state_publisher.publish(self.status)
 				self.switchToState(State.INIT_STATE)
 			else:
@@ -389,7 +404,7 @@ class Calibrator:
 		if self.mov == True:
 			self.checkedMovement = False
 			self.status.state = "idle"
-			self.status.remaining_time = DEFAULT_STOPPEDTIME
+			self.status.remaining_time = self.desired_stoppedtime
 			self.state_publisher.publish(self.status)
 			self.switchToState(State.INIT_STATE)
 
@@ -405,10 +420,10 @@ class Calibrator:
 		else:
 			if tdiff >= self.desired_gyrotime:
 				self.checkedMovement = False
-				self.status.state = "idle"
-				self.status.remaining_time = DEFAULT_STOPPEDTIME
+				self.status.state = "standby"
+				self.status.remaining_time = self.desired_standbytime
 				self.state_publisher.publish(self.status)
-				self.switchToState(State.INIT_STATE)
+				self.switchToState(State.STANDBY_STATE)
 			else:
 				self.status.remaining_time = round(self.desired_gyrotime-tdiff,2)
 				self.status.state = "checking"
@@ -545,7 +560,8 @@ def main():
 	  'desired_freq': DEFAULT_FREQ,
 	  'desired_bias' : DEFAULT_BIAS,
 	  'desired_stoppedtime' : DEFAULT_STOPPEDTIME,
-	  'desired_gyrotime' : DEFAULT_GYROTIME
+	  'desired_gyrotime' : DEFAULT_GYROTIME,
+	  'desired_standbytime' : DEFAULT_STANDBYTIME
 	}
 	
 	args = {}
