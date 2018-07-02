@@ -44,6 +44,7 @@ from std_srvs.srv import Trigger
 from imu_calibrator.msg import CalibratorStatus
 from robotnik_msgs.srv import enable_disable
 from mavros_msgs.msg import State as MavrosState
+from sensor_msgs.msg import Temperature
 
 DEFAULT_FREQ = 100.0
 DEFAULT_BIAS = 0.01
@@ -53,6 +54,8 @@ DEFAULT_STOPPEDTIME = 10
 DEFAULT_GYROTIME = 0.5
 # Time between calibrations
 DEFAULT_STANDBYTIME = 300
+# Max temperature variation for calibrate
+DEFAULT_TEMPERATUREVARIATION = 0.3
 MAX_FREQ = 500.0
 
 # Estados añadidos
@@ -70,11 +73,13 @@ class Calibrator:
 		self.desired_stoppedtime = args['desired_stoppedtime']
 		self.desired_gyrotime = args['desired_gyrotime']
 		self.desired_standbytime = args['desired_standbytime']
+		self.desired_temperaturevariation = args['desired_temperaturevariation']
 		self.enable = enable_disable()
 		self.enable.value = True
 		self.disable = enable_disable()
 		self.disable.value = False
 		self.calibracionTerminada = True
+		self.temperatura = 0.0
 		# Checks value of freq
 		if self.desired_freq <= 0.0 or self.desired_freq > MAX_FREQ:
 			rospy.loginfo('%s::init: Desired freq (%f) is not possible. Setting desired_freq to %f'%(self.node_name,self.desired_freq, DEFAULT_FREQ))
@@ -91,6 +96,9 @@ class Calibrator:
 		if self.desired_standbytime <= 0.0:
 			rospy.loginfo('%s::init: Desired standby time (%f) is not possible. Setting desired_standbytime to %f'%(self.node_name,self.desired_standbytime, DEFAULT_STANDBYTIME))
 			self.desired_standbytime = DEFAULT_STANDBYTIME
+		if self.desired_temperaturevariation <= 0.0:
+			rospy.loginfo('%s::init: Desired temperature variation (%f) is not possible. Setting desired_temperaturevariation to %f'%(self.node_name,self.desired_temperaturevariation, DEFAULT_TEMPERATUREVARIATION))
+			self.desired_temperaturevariation = DEFAULT_TEMPERATUREVARIATION
 	
 		self.status = CalibratorStatus()
 		self.status.state = "idle"
@@ -170,6 +178,9 @@ class Calibrator:
 		else:
 			self.calibracionTerminada = True
 
+	def guardaTemperatura(self, data):
+		self.temperatura = data.temperature
+
 	def rosSetup(self):
 		'''
 			Creates and inits ROS components
@@ -183,6 +194,7 @@ class Calibrator:
 		self.odom = rospy.Subscriber('robotnik_base_control/odom', Odometry, self.movimiento)
 		self.gyro = rospy.Subscriber('imu/rpy/filtered', Vector3Stamped, self.giroscopio)
 		self.calibrated = rospy.Subscriber('mavros/state', MavrosState, self.calibrado)
+		self.temperaturetemperature = rospy.Subscriber('mavros/imu/temperature', Temperature, self.guardaTemperatura)
 		# Service Servers
 		rospy.wait_for_service('calibrate_imu_gyro')
 		rospy.wait_for_service('robotnik_base_control/enable')
@@ -359,10 +371,13 @@ class Calibrator:
 			Actions performed in standby state
 		'''
 		self.enableController(self.enable.value)
+		temp = self.temperatura
 		for i in reversed(range(self.desired_standbytime)):
 				self.status.remaining_time = i
 				self.state_publisher.publish(self.status)
 				rospy.sleep(1)
+				if abs(self.temperatura - temp) >= self.desired_temperaturevariation:
+					break
 
 		self.status.state = "idle"
 		self.state_publisher.publish(self.status)
@@ -573,7 +588,8 @@ def main():
 	  'desired_bias' : DEFAULT_BIAS,
 	  'desired_stoppedtime' : DEFAULT_STOPPEDTIME,
 	  'desired_gyrotime' : DEFAULT_GYROTIME,
-	  'desired_standbytime' : DEFAULT_STANDBYTIME
+	  'desired_standbytime' : DEFAULT_STANDBYTIME,
+	  'desired_temperaturevariation' : DEFAULT_TEMPERATUREVARIATION
 	}
 	
 	args = {}
