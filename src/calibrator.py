@@ -47,6 +47,8 @@ from mavros_msgs.msg import State as MavrosState
 from sensor_msgs.msg import Temperature
 
 DEFAULT_FREQ = 100.0
+MAX_FREQ = 500.0
+# Max error of the gyroscope
 DEFAULT_BIAS = 0.01
 # Time than the robot has to be stopped to starting the calibration process
 DEFAULT_STOPPEDTIME = 10
@@ -56,9 +58,8 @@ DEFAULT_GYROTIME = 0.5
 DEFAULT_STANDBYTIME = 300
 # Max temperature variation for calibrate
 DEFAULT_TEMPERATUREVARIATION = 0.3
-MAX_FREQ = 500.0
 
-# Estados añadidos
+# Added states (Not in State from robotnik_msgs.msg)
 CHECKMOVEMENT_STATE = 800
 CHECKGYRO_STATE = 900
 
@@ -74,12 +75,14 @@ class Calibrator:
 		self.desired_gyrotime = args['desired_gyrotime']
 		self.desired_standbytime = args['desired_standbytime']
 		self.desired_temperaturevariation = args['desired_temperaturevariation']
+
 		self.enable = enable_disable()
 		self.enable.value = True
 		self.disable = enable_disable()
 		self.disable.value = False
-		self.calibracionTerminada = True
-		self.temperatura = 0.0
+
+		self.calibrationEnds = True
+		self.temperature = 0.0
 		# Checks value of freq
 		if self.desired_freq <= 0.0 or self.desired_freq > MAX_FREQ:
 			rospy.loginfo('%s::init: Desired freq (%f) is not possible. Setting desired_freq to %f'%(self.node_name,self.desired_freq, DEFAULT_FREQ))
@@ -126,7 +129,7 @@ class Calibrator:
 		# The robot is changing his position
 		self.mov = True
 		# Position of the robot (linear.x, angular.z)
-		self.pos = [0,0]
+		self.pos = [0,0,0,0,0,0]
 		# The robot needs calibration
 		self.calibrate = False
 		# Last inclination of the robot
@@ -150,17 +153,23 @@ class Calibrator:
 		return 0
 
 	
+	# Callback. Sets self.mov=True if the odometry changes.
 	def movimiento(self,data):
 		aux = self.pos
 
-		x = round(data.twist.twist.linear.x, 5)
-		z = round(data.twist.twist.angular.z, 5)
-		self.pos = [x, z]
+		x1 = round(data.twist.twist.linear.x, 5)
+		y1 = round(data.twist.twist.linear.y, 5)
+		z1 = round(data.twist.twist.linear.z, 5)
+		x2 = round(data.twist.twist.angular.x, 5)
+		y2 = round(data.twist.twist.angular.y, 5)
+		z2 = round(data.twist.twist.angular.z, 5)
+		self.pos = [x1, y1, z1, x2, y2, z2]
 
 		if self.pos != aux:
 			self.mov = True
 
 
+	# Callback. Sets self.calibrate=True if bias>self.desired_bias.
 	def giroscopio(self,data):
 		x = data.vector.x
 		y = data.vector.y
@@ -172,14 +181,17 @@ class Calibrator:
 		if abs(self.incMin[0]-self.incMax[0])>=self.desired_bias or abs(self.incMin[1]-self.incMax[1])>=self.desired_bias or abs(self.incMin[2]-self.incMax[2])>=self.desired_bias:
 			self.calibrate = True
 
+
+	# Callback. Sets self.calibrationEnds=True if calibration process ends.
 	def calibrado(self,data):
 		if data.system_status == 0:
-			self.calibracionTerminada = False
+			self.calibrationEnds = False
 		else:
-			self.calibracionTerminada = True
+			self.calibrationEnds = True
 
+	# Saves actual temperature to self.temperature
 	def guardaTemperatura(self, data):
-		self.temperatura = data.temperature
+		self.temperature = data.temperature
 
 	def rosSetup(self):
 		'''
@@ -191,15 +203,15 @@ class Calibrator:
 		# Publishers
 		self.state_publisher = rospy.Publisher('calibrator/status', CalibratorStatus, queue_size=10)
 		# Subscribers
-		self.odom = rospy.Subscriber('robotnik_base_control/odom', Odometry, self.movimiento)
-		self.gyro = rospy.Subscriber('imu/rpy/filtered', Vector3Stamped, self.giroscopio)
-		self.calibrated = rospy.Subscriber('mavros/state', MavrosState, self.calibrado)
-		self.temperaturetemperature = rospy.Subscriber('mavros/imu/temperature', Temperature, self.guardaTemperatura)
+		self.odom_topic = rospy.Subscriber('robotnik_base_control/odom', Odometry, self.movimiento)
+		self.gyro_topic = rospy.Subscriber('imu/rpy/filtered', Vector3Stamped, self.giroscopio)
+		self.calibrated_topic = rospy.Subscriber('mavros/state', MavrosState, self.calibrado)
+		self.temperature_topic = rospy.Subscriber('mavros/imu/temperature', Temperature, self.guardaTemperatura)
 		# Service Servers
 		rospy.wait_for_service('calibrate_imu_gyro')
 		rospy.wait_for_service('robotnik_base_control/enable')
-		self.calibrateService = rospy.ServiceProxy('calibrate_imu_gyro', Trigger)
-		self.enableController = rospy.ServiceProxy('robotnik_base_control/enable', enable_disable)
+		self.calibrate_service = rospy.ServiceProxy('calibrate_imu_gyro', Trigger)
+		self.enable_controller_service = rospy.ServiceProxy('robotnik_base_control/enable', enable_disable)
 		# self.service_server = rospy.Service('~service', Empty, self.serviceCb)
 		# Service Clients
 		self.enable_controller_service_client = rospy.ServiceProxy('enable_controller', enable_disable)
@@ -344,12 +356,16 @@ class Calibrator:
 	def initState(self):
 		'''
 			Actions performed in init state
+			If the robot has been stopped for 'x' seconds, it disables the engines and
+			prepare the variables for check the gyroscope, or enables the engines if
+			the odometry changes.
+			Else, prepare the variables for enter in checkMovementState()
 		'''
 		if not self.initialized:
 			self.setup()
 		else:
 			if self.checkedMovement == True:
-				detenido = self.enableController(self.disable.value)
+				detenido = self.enable_controller_service(self.disable.value)
 				if detenido == False:
 					self.checkedMovement = False
 				else:
@@ -357,7 +373,7 @@ class Calibrator:
 					self.incMin = [100,100,100]
 					self.incMax = [-100,-100,-100]
 			else:
-				self.enableController(self.enable.value)
+				self.enable_controller_service(self.enable.value)
 				self.mov = False
 
 			self.t1 = time.time()
@@ -369,14 +385,15 @@ class Calibrator:
 	def standbyState(self):
 		'''
 			Actions performed in standby state
+			Wait 'x' seconds after a calibration. If the temperature changes, the standbyState ends.
 		'''
-		self.enableController(self.enable.value)
-		temp = self.temperatura
+		self.enable_controller_service(self.enable.value)
+		temp = self.temperature
 		for i in reversed(range(self.desired_standbytime)):
 				self.status.remaining_time = i
 				self.state_publisher.publish(self.status)
 				rospy.sleep(1)
-				if abs(self.temperatura - temp) >= self.desired_temperaturevariation:
+				if abs(self.temperature - temp) >= self.desired_temperaturevariation:
 					break
 
 		self.status.state = "idle"
@@ -399,6 +416,10 @@ class Calibrator:
 		
 	
 	def checkMovementState(self):
+		'''
+			Actions performed in check movement state.
+			If the robot has been stoped by 'x'seconds, jump to check gyro state.
+		'''
 
 		tdiff = time.time() - self.t1
 
@@ -422,6 +443,10 @@ class Calibrator:
 
 
 	def checkGyroState(self):
+		'''
+			Actions performed in check movement state.
+			Checks if the gyroscope needs a calibration, and execute the calibration in that case.
+		'''
 
 		tdiff = time.time() - self.t1
 
@@ -433,15 +458,15 @@ class Calibrator:
 			self.switchToState(State.INIT_STATE)
 
 		if self.calibrate:
-			self.calibracionTerminada = False
+			self.calibrationEnds = False
 			self.status.state = "calibrating"
 			rospy.loginfo("Calibrating, this can take a while. Please, don't move the robot during this process.")
-			self.calibrateService()
+			self.calibrate_service()
 			for i in reversed(range(60)):
 				self.status.remaining_time = i
 				self.state_publisher.publish(self.status)
 				rospy.sleep(1)
-				if self.calibracionTerminada:
+				if self.calibrationEnds:
 					break
 			self.switchToState(State.INIT_STATE)
 		else:

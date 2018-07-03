@@ -1,4 +1,14 @@
 <launch>
     <!-- Start recalibrator -->
-    <node pkg="imu_calibrator" type="calibrator.py" name="calibrator" output="screen"/>
+    <node pkg="imu_calibrator" type="calibrator.py" name="calibrator" output="screen">
+        <param name="desired_bias" value="0.01"/>
+        <!-- Time than the robot has to be stopped to check the gyroscope -->
+        <param name="desired_stoppedtime" value="10.0"/>
+        <!-- Time to check the bias -->
+        <param name="desired_gyrotime" value="0.5"/>
+        <!-- Time to be in standby after a calibration -->
+        <param name="desired_standbytime" value="300.0"/>
+        <!-- Temperature variation to exit of the standby state -->
+        <param name="desired_temperaturevariation" value="0.3"/>
+    </node>
 </launch>
