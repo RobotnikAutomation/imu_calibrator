@@ -206,7 +206,7 @@ class Calibrator:
 		self.odom_topic = rospy.Subscriber('robotnik_base_control/odom', Odometry, self.movimiento)
 		self.gyro_topic = rospy.Subscriber('imu/rpy/filtered', Vector3Stamped, self.giroscopio)
 		self.calibrated_topic = rospy.Subscriber('mavros/state', MavrosState, self.calibrado)
-		self.temperature_topic = rospy.Subscriber('mavros/imu/temperature', Temperature, self.guardaTemperatura)
+		self.temperature_topic = rospy.Subscriber('mavros/imu/temperature_imu', Temperature, self.guardaTemperatura)
 		# Service Servers
 		rospy.wait_for_service('calibrate_imu_gyro')
 		rospy.wait_for_service('robotnik_base_control/enable')
