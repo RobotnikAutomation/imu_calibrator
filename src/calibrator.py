@@ -392,6 +392,8 @@ class Calibrator:
 		for i in reversed(range(self.desired_standbytime)):
 				self.status.remaining_time = i
 				self.state_publisher.publish(self.status)
+				if rospy.is_shutdown():
+					exit()
 				rospy.sleep(1)
 				if abs(self.temperature - temp) >= self.desired_temperaturevariation:
 					break
@@ -465,6 +467,8 @@ class Calibrator:
 			for i in reversed(range(60)):
 				self.status.remaining_time = i
 				self.state_publisher.publish(self.status)
+				if rospy.is_shutdown():
+					exit()
 				rospy.sleep(1)
 				if self.calibrationEnds:
 					break
