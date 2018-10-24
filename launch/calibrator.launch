@@ -2,7 +2,7 @@
     <!-- Start recalibrator -->
     <node pkg="imu_calibrator" type="calibrator.py" name="calibrator" output="screen">
         <param name ="desired_freq" value="100.0"/>
-        <param name="desired_bias" value="0.01"/>
+        <param name="desired_bias" value="0.05"/>
         <!-- Time than the robot has to be stopped to check the gyroscope -->
         <param name="desired_stoppedtime" value="10.0"/>
         <!-- Time to check the bias -->
