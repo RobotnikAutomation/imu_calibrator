@@ -292,7 +292,7 @@ class Calibrator:
 			Main loop of the component
 			Manages actions by state
 		'''
-		
+	        rospy.loginfo('running!')	
 		while self.running and not rospy.is_shutdown():
 			t1 = time.time()
 			
