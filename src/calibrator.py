@@ -202,7 +202,7 @@ class Calibrator:
 			return 0
 		
 		# Publishers
-		self.state_publisher = rospy.Publisher('calibrator/status', CalibratorStatus, queue_size=10)
+		self.state_publisher = rospy.Publisher('~status', CalibratorStatus, queue_size=10)
 		# Subscribers
 		self.odom_topic = rospy.Subscriber('robotnik_base_control/odom', Odometry, self.movimiento)
 		self.gyro_topic = rospy.Subscriber('imu/rpy/filtered', Vector3Stamped, self.giroscopio)
@@ -215,10 +215,6 @@ class Calibrator:
 		rospy.wait_for_service('robotnik_base_control/enable')
 		self.calibrate_service = rospy.ServiceProxy('calibrate_imu_gyro', Trigger)
 		self.enable_controller_service = rospy.ServiceProxy('robotnik_base_control/enable', enable_disable)
-		# self.service_server = rospy.Service('~service', Empty, self.serviceCb)
-		# Service Clients
-		self.enable_controller_service_client = rospy.ServiceProxy('enable_controller', enable_disable)
-		# ret = self.service_client.call(ServiceMsg)
 		
 		self.ros_initialized = True
 		
